@@ -68,6 +68,27 @@ async function decrypt(name, buf, password) {
   return page.textContent("#dec-msg");
 }
 
+// Puts big generated files on a file input inside the page (Playwright caps uploads at 50 MB).
+// spec: [{ name, mb }] for zero-filled files, or { zipOf: [{ name, mb }], password } for an AES ZIP of them.
+async function setBigFiles(selector, spec) {
+  await page.evaluate(async ([selector, spec]) => {
+    const fill = (mb) => new Uint8Array(mb * 1024 * 1024).fill(7);
+    let files;
+    if (spec.zipOf) {
+      const w = new zip.ZipWriter(new zip.BlobWriter("application/zip"), { password: spec.password, encryptionStrength: 3, level: 0 });
+      for (const f of spec.zipOf) await w.add(f.name, new zip.Uint8ArrayReader(fill(f.mb)));
+      files = [new File([await w.close()], spec.name, { type: "application/zip" })];
+    } else {
+      files = spec.map((f) => new File([fill(f.mb)], f.name));
+    }
+    const dt = new DataTransfer();
+    files.forEach((f) => dt.items.add(f));
+    const input = document.querySelector(selector);
+    input.files = dt.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, [selector, spec]);
+}
+
 const rowNames = () => page.$$eval("#dec-out .row .name", (els) => els.map((e) => e.textContent));
 
 const tests = {
@@ -158,6 +179,57 @@ const tests = {
     assert.equal(await btn.isDisabled(), false);
   },
 
+  async "Clear everything cancels an encryption in progress"() {
+    await page.click("#tab-enc");
+    // Large enough that encryption is still running when the wipe happens.
+    await setBigFiles("#enc-files", [{ name: "big.bin", mb: 64 }]);
+    await page.fill("#enc-pw", PW); await page.fill("#enc-pw2", PW);
+    await page.setChecked("#enc-hide", true); await page.setChecked("#enc-compress", true);
+    await page.click("#enc-go");
+    await page.waitForFunction(() => document.getElementById("enc-msg").textContent === "Encrypting…");
+    await page.click("#wipe");
+    await page.waitForTimeout(3000);
+    assert.equal(await page.isHidden("#enc-out"), true);
+    assert.equal(await page.textContent("#enc-msg"), "");
+    assert.equal(await page.isHidden("#enc-progress"), true);
+    assert.equal(await page.isDisabled("#enc-files"), false);
+  },
+
+  async "file list is locked while encrypting"() {
+    await page.click("#tab-enc");
+    await setBigFiles("#enc-files", [{ name: "big.bin", mb: 64 }, { name: "small.txt", mb: 0 }]);
+    await page.fill("#enc-pw", PW); await page.fill("#enc-pw2", PW);
+    await page.setChecked("#enc-hide", false); await page.setChecked("#enc-compress", true);
+    await page.click("#enc-go");
+    await page.waitForFunction(() => document.getElementById("enc-msg").textContent === "Encrypting…");
+    assert.equal(await page.isDisabled("#enc-list button >> nth=1"), true);
+    assert.equal(await page.isDisabled("#enc-files"), true);
+    assert.equal(await page.isDisabled("#enc-go"), true);
+    await page.waitForSelector("#enc-out:not([hidden])", { timeout: 60_000 });
+    assert.equal(await page.isDisabled("#enc-list button >> nth=1"), false);
+    assert.equal(await page.isDisabled("#enc-files"), false);
+  },
+
+  async "choosing another ZIP while decrypting cancels the first"() {
+    await page.click("#tab-dec");
+    await setBigFiles("#dec-file", { name: "big.zip", password: PW, zipOf: [{ name: "big1.bin", mb: 48 }, { name: "big2.bin", mb: 48 }] });
+    await page.fill("#dec-pw", PW);
+    await page.click("#dec-go");
+    await page.waitForFunction(() => document.getElementById("dec-msg").textContent === "Decrypting…");
+    const small = fs.readFileSync(path.join(OUT, "visible.zip"));
+    await page.setInputFiles("#dec-file", { name: "second.zip", mimeType: "application/zip", buffer: small });
+    assert.equal(await page.isHidden("#dec-progress"), true);
+    assert.equal(await page.isDisabled("#dec-go"), false);
+    await page.waitForTimeout(3000);   // the first decryption must not show up under the second file
+    assert.equal(await page.isHidden("#dec-out"), true);
+    assert.equal(await page.textContent("#dec-msg"), "");
+    await page.fill("#dec-pw", PW);
+    assert.match(await decrypt("second.zip", small, PW), /^Decrypted 2 files/);
+    assert.deepEqual((await rowNames()).sort(), ["data.bin", "hello.txt"]);
+    const all = await clickDownload(page.locator("#dec-out button", { hasText: "Download all" }));
+    assert.equal(all.name, "second-decrypted.zip");
+  },
+
   async "decrypts an AES-256 ZIP made by 7-Zip"() {
     const p = path.join(OUT, "interop.zip");
     if (!fs.existsSync(p)) { console.log("     (skipped: no interop.zip)"); return; }
@@ -180,12 +252,16 @@ const tests = {
   page.on("request", (r) => { if (!r.url().startsWith(BASE) && !/^(blob|data):/.test(r.url())) problems.push("off-site request: " + r.url()); });
   await page.goto(BASE + "/");
   await page.waitForFunction(() => typeof zip !== "undefined");
+  await page.evaluate(() => { window.__buildPlainZip = buildPlainZip; });   // tests patch it; restored after each
 
   let failed = 0;
   for (const [name, fn] of Object.entries(tests)) {
     try { await fn(); console.log("ok   " + name); }
     catch (e) { failed++; console.log("FAIL " + name + "\n     " + (e.stack || e).toString().split("\n").slice(0, 4).join("\n     ")); }
-    finally { await page.click("#wipe").catch(() => {}); }
+    finally {
+      await page.click("#wipe").catch(() => {});
+      await page.evaluate(() => { window.buildPlainZip = window.__buildPlainZip; }).catch(() => {});
+    }
   }
   // Reload so a fresh page (no test patches) checks that the service worker registers.
   await page.reload();
