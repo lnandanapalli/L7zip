@@ -8,16 +8,11 @@ Files made with L7zip open without this site in:
 - **iPhone/iPad:** this site, or apps like Zip Opener or iZip
 - **Linux:** `7z x file.zip`
 
-**How it works, on purpose kept simple:**
-- **Encrypt** takes exactly one file and makes one AES-256 ZIP.
-- **Decrypt** takes exactly one ZIP, which must be password-protected, and removes only that one layer. One file inside gives you that file; several give you one plain ZIP of them. Anything inside, including other ZIPs, is passed on as it is and never opened.
-- There are no folder uploads and no multiple downloads.
+**Hide file names** (on by default): standard AES ZIPs encrypt file contents but not file names. With this option, your files go into a plain inner `archive.zip`, which is then encrypted, so the names are hidden too. In other tools you enter the password, get `archive.zip`, and open that. L7zip unwraps it automatically.
 
-**Wrap in a ZIP to hide the file name** (on by default): encrypted ZIPs encrypt the file's contents but not its name. With this option, your file is first put in a plain `archive.zip`, and that is what gets encrypted. Decrypting (here or in any tool) gives you `archive.zip`; open it with your computer or phone to get your file.
-
-To make one from the Mac command line (equivalent, without wrapping):
+To make one from the Mac command line (equivalent, without hidden names):
 ```bash
-7zz a -tzip -mem=AES256 -p secret.zip file.pdf
+7zz a -tzip -mem=AES256 -p secret.zip files/
 ```
 
 ## Deploy to Azure Web App (Linux, custom container)
@@ -56,7 +51,7 @@ After the first visit, the app works offline.
 Rebuild and redeploy. Nothing needs bumping: when a device is online, the app always loads the latest files from the server, and it only uses its saved offline copy when the server can't be reached.
 
 ## Tests
-GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and push to `main`. It builds the image, checks the nginx config, checks status codes, content types and security headers (`tests/check-server.sh`), runs browser tests of the one-file-in, one-file-out rules in Chromium (`tests/e2e.cjs`), and confirms 7-Zip opens the ZIPs the app makes and that the app opens ZIPs 7-Zip makes.
+GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and push to `main`. It builds the image, checks the nginx config, checks status codes, content types and security headers (`tests/check-server.sh`), runs browser tests of encrypt/decrypt in Chromium (`tests/e2e.cjs`), and confirms 7-Zip opens the ZIPs the app makes and that the app opens ZIPs 7-Zip makes.
 
 Run them locally against a running container:
 ```

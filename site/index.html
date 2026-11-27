@@ -31,9 +31,11 @@
   <!-- ENCRYPT -->
   <section id="panel-enc" role="tabpanel" aria-labelledby="tab-enc">
     <div class="pickers">
-      <label class="btn">Choose file<input id="enc-file" type="file" hidden></label>
+      <label class="btn">Add files<input id="enc-files" type="file" multiple hidden></label>
+      <label class="btn secondary" id="enc-folder-label">Add folder<input id="enc-folder" type="file" webkitdirectory hidden></label>
     </div>
-    <p id="enc-chosen" class="muted"></p>
+    <ul id="enc-list" class="filelist"></ul>
+    <p id="enc-summary" class="muted"></p>
 
     <label class="field">Password
       <div class="pw"><input id="enc-pw" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false"><button type="button" class="eye" data-for="enc-pw" aria-label="Show password">Show</button></div>
@@ -47,8 +49,8 @@
       <input id="enc-name" type="text" autocapitalize="off" spellcheck="false">
     </label>
 
-    <label class="check"><input id="enc-hide" type="checkbox" checked> Wrap in a ZIP to hide the file name
-      <small>Encrypted ZIPs show the file name to anyone, even without the password. When this is on, your file is first put in a plain <code>archive.zip</code>, and that is what gets encrypted. Decrypting gives you <code>archive.zip</code>; open it with your computer or phone (double-click on Mac and Windows, tap in the iPhone Files app) to get your file.</small></label>
+    <label class="check"><input id="enc-hide" type="checkbox" checked> Hide file names
+      <small>Standard encrypted ZIPs leave file names visible. When this is on, your files go into an inner ZIP inside the encrypted one, so the names are hidden too. In 7-Zip you'll see one <code>archive.zip</code> to open after entering the password.</small></label>
     <label class="check"><input id="enc-compress" type="checkbox" checked> Compress
       <small>Turn this off for photos, videos and other files that are already compressed, so encryption runs faster.</small></label>
 
@@ -61,7 +63,7 @@
   <!-- DECRYPT -->
   <section id="panel-dec" role="tabpanel" aria-labelledby="tab-dec" hidden>
     <div class="pickers">
-      <label class="btn">Choose encrypted ZIP<input id="dec-file" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden></label>
+      <label class="btn">Choose ZIP<input id="dec-file" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden></label>
     </div>
     <p id="dec-chosen" class="muted"></p>
 
@@ -78,7 +80,7 @@
   <button id="wipe" type="button" class="wipe">Clear everything</button>
 
   <footer>
-    <p>One file in, one file out. The files use the standard WinZip AES-256 format, so macOS (just double-click), 7-Zip, WinZip, Keka and other tools can open them without this site. Your files and password never leave this device.</p>
+    <p>The files use the standard WinZip AES-256 format, so macOS (just double-click), 7-Zip, WinZip, Keka and other tools can open them without this site. Your files and password never leave this device.</p>
     <p class="muted" id="offline-state"></p>
   </footer>
 </main>
