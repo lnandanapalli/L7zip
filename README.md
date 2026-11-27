@@ -48,7 +48,7 @@ Then open your site:
 After the first visit, the app works offline.
 
 ## Updating
-After changing any file in `site/`, bump `VERSION` in `site/sw.js`, then rebuild and redeploy. Devices pick up the update on their next visit, and it takes effect after the app is closed and reopened.
+Rebuild and redeploy. Nothing needs bumping: when a device is online, the app always loads the latest files from the server, and it only uses its saved offline copy when the server can't be reached.
 
 ## Security notes
 - The crypto is AES-256 (WinZip AE-2) with HMAC-SHA1 authentication, using the browser's Web Crypto API through zip.js (bundled in `site/vendor/`, no CDN).
