@@ -8,7 +8,9 @@ Files made with L7zip open without this site in:
 - **iPhone/iPad:** this site, or apps like Zip Opener or iZip
 - **Linux:** `7z x file.zip`
 
-**Hide file names** (on by default): standard AES ZIPs encrypt file contents but not file names. With this option, your files go into a plain inner `archive.zip`, which is then encrypted, so the names are hidden too. In other tools you enter the password, get `archive.zip`, and open that. L7zip unwraps it automatically.
+**Hide file names** (on by default): standard AES ZIPs encrypt file contents but not file names. With this option, your files go into a plain inner `archive.zip`, which is then encrypted, so the names are hidden too. In other tools you enter the password, get `archive.zip`, and open that.
+
+**Open an unencrypted ZIP inside** (decrypt, on by default): if the decrypted result is a single ZIP with nothing password-protected in it, such as the hide-names wrapper, L7zip shows the files inside it. It opens only that one extra level and never tries the password on it, so an encrypted ZIP inside is given to you as it is. Turn it off to always get just the outer layer.
 
 To make one from the Mac command line (equivalent, without hidden names):
 ```bash

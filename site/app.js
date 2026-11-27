@@ -327,7 +327,7 @@ $("dec-go").addEventListener("click", async () => {
   cancelDec();
   const gen = decGen, ctrl = new AbortController(), signal = ctrl.signal, file = decFile;
   decAbort = ctrl;
-  const pw = $("dec-pw").value;
+  const pw = $("dec-pw").value, unwrap = $("dec-unwrap").checked;
   const prog = $("dec-progress"), out = $("dec-out");
   const setProg = (v) => { if (gen === decGen) prog.value = v; };
   out.hidden = true; out.textContent = "";
@@ -346,15 +346,23 @@ $("dec-go").addEventListener("click", async () => {
     if (!anyEncrypted) notes.push("This ZIP wasn't encrypted.");
     if (files.some((f) => f.zipCrypto)) notes.push("This ZIP uses the old ZipCrypto encryption, which is weak.");
 
-    // Unwrap the hidden-names inner archive.
-    let innerBlob = null;   // the inner archive, reused for "Download all" when it is a plain ZIP
-    if (files.length === 1 && files[0].path === INNER_NAME) {
-      innerBlob = files[0].blob;
+    // "Open an unencrypted ZIP inside": if the result is a single ZIP with nothing encrypted in it
+    // (e.g. the "Hide file names" wrapper), show its files. One extra level only, and the password
+    // is never tried on it: an encrypted inner ZIP is passed on as it is.
+    let innerBlob = null;   // the opened inner ZIP, reused as-is for "Download all"
+    if (unwrap && files.length === 1) {
+      let inner;
       try {
-        const inner = new zip.ZipReader(new zip.BlobReader(innerBlob));
-        files = await extractAll(inner, pw, (p) => setProg(0.5 + p * 0.5), signal);
-        await inner.close();
-      } catch { innerBlob = null; /* not a zip after all — show as-is */ }
+        inner = new zip.ZipReader(new zip.BlobReader(files[0].blob));
+        const innerEntries = (await inner.getEntries()).filter((e) => !e.directory);
+        if (innerEntries.some((e) => e.encrypted)) {
+          notes.push(`${baseName(files[0].path)} inside is password-protected, so it wasn't opened.`);
+        } else if (innerEntries.length) {
+          innerBlob = files[0].blob;
+          files = await extractAll(inner, undefined, (p) => setProg(0.5 + p * 0.5), signal);
+        }
+      } catch { innerBlob = null; /* not a ZIP — show the file as it is */ }
+      try { await inner?.close(); } catch {}
     }
     prog.value = 1;
     if (gen !== decGen) return;   // cancelled: "Clear everything" or another ZIP chosen
@@ -368,8 +376,8 @@ $("dec-go").addEventListener("click", async () => {
     if (files.length > 1) {
       const allName = file.name.replace(/\.zip$/i, "") + "-decrypted.zip";
       const actions = document.createElement("div"); actions.className = "actions";
-      // Only reuse the inner archive if none of its entries were encrypted; otherwise rebuild.
-      let ready = innerBlob && !files.some((f) => f.encrypted) ? innerBlob : null;
+      // An opened inner ZIP is already a plain ZIP of exactly these files, so reuse it.
+      let ready = innerBlob;
       innerBlob = null;
       const btn = button("Download all (.zip)", async () => {
         btn.disabled = true;
