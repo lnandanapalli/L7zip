@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BASE: http://localhost:8080
+      OUT: tests/out
+      PW: correct horse battery staple
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: JavaScript syntax
+        run: for f in site/app.js site/sw.js tests/e2e.cjs; do node --check "$f"; done
+
+      - name: Build image
+        run: docker build -t l7zip:ci .
+
+      - name: nginx config test
+        run: docker run --rm l7zip:ci nginx -t
+
+      - name: Start container
+        run: |
+          docker run -d --name l7zip -p 8080:80 l7zip:ci
+          for i in $(seq 1 30); do curl -fsS -o /dev/null "$BASE/" && exit 0; sleep 1; done
+          docker logs l7zip; exit 1
+
+      - name: Server checks (status, content types, security headers)
+        run: bash tests/check-server.sh
+
+      - name: Install Playwright and 7-Zip
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y -q p7zip-full
+
+      - name: Make an AES-256 ZIP with 7-Zip for the browser to open
+        run: |
+          mkdir -p "$OUT/src"
+          printf 'Hello, L7zip!\n' > "$OUT/src/hello.txt"
+          python3 -c "import sys; open(sys.argv[1],'wb').write(bytes((i*31)%251 for i in range(70000)))" "$OUT/src/data.bin"
+          (cd "$OUT/src" && 7z a -tzip -mem=AES256 -pinterop-pw ../interop.zip hello.txt data.bin)
+
+      - name: Browser end-to-end tests
+        run: node tests/e2e.cjs
+
+      - name: 7-Zip opens the ZIPs the app made
+        run: |
+          cd "$OUT"
+          7z x -y -p"$PW" visible.zip -ovisible
+          7z x -y -p"$PW" hidden.zip -ohidden
+          ! 7z l -slt hidden/archive.zip | grep -q '^Encrypted = +' || { echo "inner archive should not be encrypted"; exit 1; }
+          7z x -y hidden/archive.zip -ohidden/inner
+          for d in visible hidden/inner; do
+            for f in hello.txt data.bin; do cmp "src/$f" "$d/$f"; done
+          done
+          7z l -slt visible.zip | grep -q '^Method = AES-256' || { echo "expected AES-256"; exit 1; }
+          echo "7-Zip extracted identical files"
+
+      - name: Container logs
+        if: failure()
+        run: docker logs l7zip || true
