@@ -71,6 +71,9 @@
       <div class="pw"><input id="dec-pw" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false"><button type="button" class="eye" data-for="dec-pw" aria-label="Show password">Show</button></div>
     </label>
 
+    <label class="check"><input id="dec-unwrap" type="checkbox" checked> Open an unencrypted ZIP inside
+      <small>If the encrypted ZIP holds just one ZIP and nothing in it is password-protected (like files made with "Hide file names"), show the files inside it instead. Only that one extra level is opened. Turn this off to get the ZIP inside as it is.</small></label>
+
     <button id="dec-go" class="primary" disabled>Decrypt</button>
     <progress id="dec-progress" max="1" value="0" hidden></progress>
     <p id="dec-msg" class="msg" role="status"></p>

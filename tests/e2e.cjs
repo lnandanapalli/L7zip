@@ -89,6 +89,22 @@ async function setBigFiles(selector, spec) {
   }, [selector, spec]);
 }
 
+// Builds a ZIP inside the page. entries: [{ name, text, password? }]; an entry without a password
+// is stored unencrypted. An entry with inner: [...] holds a ZIP of those entries instead of text.
+async function makeZip(entries) {
+  return Buffer.from(await page.evaluate(async (entries) => {
+    const build = async (list) => {
+      const w = new zip.ZipWriter(new zip.BlobWriter("application/zip"));
+      for (const e of list) {
+        const reader = e.inner ? new zip.BlobReader(await build(e.inner)) : new zip.TextReader(e.text);
+        await w.add(e.name, reader, e.password ? { password: e.password, encryptionStrength: 3 } : {});
+      }
+      return w.close();
+    };
+    return Array.from(new Uint8Array(await (await build(entries)).arrayBuffer()));
+  }, entries));
+}
+
 const rowNames = () => page.$$eval("#dec-out .row .name", (els) => els.map((e) => e.textContent));
 
 const tests = {
@@ -124,19 +140,45 @@ const tests = {
     assert.equal(await page.isHidden("#dec-out"), true);
   },
 
-  async "encrypted inner archive is rebuilt, not reused, for Download all"() {
-    const buf = Buffer.from(await page.evaluate(async (pw) => {
-      const enc = { password: pw, encryptionStrength: 3 };
-      const inner = new zip.ZipWriter(new zip.BlobWriter("application/zip"), enc);
-      await inner.add("a.txt", new zip.TextReader("a"));
-      await inner.add("b.txt", new zip.TextReader("b"));
-      const outer = new zip.ZipWriter(new zip.BlobWriter("application/zip"), enc);
-      await outer.add("archive.zip", new zip.BlobReader(await inner.close()));
-      return Array.from(new Uint8Array(await (await outer.close()).arrayBuffer()));
-    }, PW));
-    assert.match(await decrypt("nested.zip", buf, PW), /^Decrypted 2 files/);
+  async "encrypted ZIP inside is not opened, even with the same password"() {
+    const buf = await makeZip([{ name: "archive.zip", password: PW, inner: [
+      { name: "a.txt", text: "a", password: PW }, { name: "b.txt", text: "b", password: PW }] }]);
+    assert.match(await decrypt("nested.zip", buf, PW), /^Decrypted 1 file .*archive\.zip inside is password-protected, so it wasn't opened\./);
+    assert.deepEqual(await rowNames(), ["archive.zip"]);
+    const one = await clickDownload(page.locator("#dec-out .row button"));
+    assert.deepEqual((await readZip(one.buf, PW)).map((e) => [e.name, e.encrypted]).sort(), [["a.txt", true], ["b.txt", true]]);
+  },
+
+  async "with the toggle off, the ZIP inside is given as it is"() {
+    const buf = fs.readFileSync(path.join(OUT, "hidden.zip"));
+    await page.click("#tab-dec");
+    await page.setChecked("#dec-unwrap", false);
+    try {
+      assert.match(await decrypt("hidden.zip", buf, PW), /^Decrypted 1 file/);
+      assert.deepEqual(await rowNames(), ["archive.zip"]);
+    } finally { await page.setChecked("#dec-unwrap", true); }
+  },
+
+  async "only one extra level is opened"() {
+    const buf = await makeZip([{ name: "outer-inner.zip", password: PW, inner: [
+      { name: "deeper.zip", inner: [{ name: "c.txt", text: "c" }] }] }]);
+    assert.match(await decrypt("three.zip", buf, PW), /^Decrypted 1 file/);
+    assert.deepEqual(await rowNames(), ["deeper.zip"]);
+  },
+
+  async "any single unencrypted ZIP inside is opened, not just archive.zip"() {
+    const buf = await makeZip([{ name: "photos.zip", password: PW, inner: [
+      { name: "a.jpg", text: "1" }, { name: "b.jpg", text: "2" }] }]);
+    assert.match(await decrypt("p.zip", buf, PW), /^Decrypted 2 files/);
+    assert.deepEqual((await rowNames()).sort(), ["a.jpg", "b.jpg"]);
     const all = await clickDownload(page.locator("#dec-out button", { hasText: "Download all" }));
-    assert.deepEqual((await readZip(all.buf)).map((e) => [e.name, e.encrypted]).sort(), [["a.txt", false], ["b.txt", false]]);
+    assert.deepEqual((await readZip(all.buf)).map((e) => [e.name, e.encrypted]).sort(), [["a.jpg", false], ["b.jpg", false]]);
+  },
+
+  async "a single file that only looks like a ZIP is given as it is"() {
+    const buf = await makeZip([{ name: "fake.zip", text: "not really a zip", password: PW }]);
+    assert.match(await decrypt("f.zip", buf, PW), /^Decrypted 1 file/);
+    assert.deepEqual(await rowNames(), ["fake.zip"]);
   },
 
   async "duplicate paths are renamed in the combined ZIP"() {
