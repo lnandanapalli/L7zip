@@ -46,4 +46,16 @@ check /does-not-exist        404 text/html
 if curl -sSI "$BASE/" | tr -d '\r' | grep -qiE '^server: nginx/[0-9]'; then echo "FAIL: nginx version exposed"; fail=1; fi
 [[ "$(curl -sS "$BASE/robots.txt")" == $'User-agent: *\nDisallow: /' ]] || { echo "FAIL: robots.txt body"; fail=1; }
 
+# gzip: text files are compressed when the browser asks for it, and served plain when it doesn't.
+for path in / /app.js /vendor/zip.min.js /styles.css; do
+  enc="$(curl -sS -D - -o /dev/null -H 'Accept-Encoding: gzip' "$BASE$path" | tr -d '\r' | grep -i '^content-encoding:' || true)"
+  [[ "${enc,,}" == "content-encoding: gzip" ]] || { echo "FAIL $path: not gzip-compressed"; fail=1; }
+done
+curl -sS -H 'Accept-Encoding: gzip' "$BASE/vendor/zip.min.js" | gunzip | cmp -s - <(curl -sS "$BASE/vendor/zip.min.js") \
+  || { echo "FAIL: gzip body differs from the plain file"; fail=1; }
+curl -sS -D - -o /dev/null "$BASE/app.js" | grep -qi '^content-encoding:' && { echo "FAIL: compressed without Accept-Encoding"; fail=1; }
+curl -sS -D - -o /dev/null -H 'Accept-Encoding: gzip' "$BASE/app.js" | grep -qi '^vary: accept-encoding' \
+  || { echo "FAIL: missing Vary: Accept-Encoding"; fail=1; }
+[[ $fail == 0 ]] && echo "ok   gzip"
+
 exit $fail

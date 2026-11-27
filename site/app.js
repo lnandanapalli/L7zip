@@ -101,7 +101,27 @@ function strengthBits(pw) {
 
 let encFiles = [];   // { file, path }
 
+// The encryption in progress: bumping encGen tells it its result is no longer wanted,
+// and encAbort stops zip.js. While it runs, the file list can't be changed.
+let encGen = 0, encAbort = null;
+const encBusy = () => encAbort !== null;
+
+function setEncBusy(busy) {
+  for (const id of ["enc-files", "enc-folder"]) $(id).disabled = busy;
+  $("enc-list").querySelectorAll("button").forEach((b) => (b.disabled = busy));
+  const pw = $("enc-pw").value;
+  $("enc-go").disabled = busy || !(encFiles.length && pw && pw === $("enc-pw2").value);
+}
+
+function cancelEnc() {
+  encGen++;
+  encAbort?.abort(); encAbort = null;
+  $("enc-progress").hidden = true;
+  setEncBusy(false);
+}
+
 function addFiles(list) {
+  if (encBusy()) return;
   const taken = new Set(encFiles.map((f) => f.path));
   for (const file of list) {
     let path = (file.webkitRelativePath || file.name).replace(/^\/+/, "");
@@ -133,7 +153,8 @@ function renderEncList() {
     const n = document.createElement("span"); n.className = "name"; n.textContent = f.path;
     const s = document.createElement("span"); s.className = "size"; s.textContent = fmtSize(f.file.size);
     const x = document.createElement("button"); x.type = "button"; x.textContent = "×"; x.setAttribute("aria-label", "Remove " + f.path);
-    x.addEventListener("click", () => { encFiles.splice(i, 1); renderEncList(); });
+    x.disabled = encBusy();
+    x.addEventListener("click", () => { if (!encBusy()) { encFiles.splice(i, 1); renderEncList(); } });
     li.append(n, s, x); ul.append(li);
   });
   $("enc-summary").textContent = encFiles.length ? `${encFiles.length} file${encFiles.length > 1 ? "s" : ""} · ${fmtSize(total)}` : "";
@@ -150,7 +171,7 @@ function validateEnc() {
   if (!encFiles.length) problem = "";
   else if (!pw) problem = "";
   else if (pw2 && pw !== pw2) problem = "Passwords don't match.";
-  const ok = encFiles.length > 0 && pw.length > 0 && pw === pw2;
+  const ok = !encBusy() && encFiles.length > 0 && pw.length > 0 && pw === pw2;
   $("enc-go").disabled = !ok;
   if (problem) setMsg($("enc-msg"), problem, "err");
   else if (/[^\x20-\x7e]/.test(pw)) setMsg($("enc-msg"), "Your password has accented letters, emoji or other non-ASCII characters. This site and 7-Zip can open the file, but some ZIP tools handle these characters differently and won't accept the password. For the widest compatibility, use only A–Z, a–z, 0–9 and standard symbols.", "warn");
@@ -179,25 +200,29 @@ $("enc-go").addEventListener("click", async () => {
   const hide = $("enc-hide").checked;
   const level = $("enc-compress").checked ? 6 : 0;
 
+  const items = encFiles.slice();   // the files being encrypted, even if the list is cleared meanwhile
+  const gen = ++encGen, ctrl = new AbortController(), signal = ctrl.signal;
+  encAbort = ctrl; setEncBusy(true);
   const prog = $("enc-progress"), out = $("enc-out");
+  const setProg = (v) => { if (gen === encGen) prog.value = v; };
   out.hidden = true; out.textContent = "";
-  $("enc-go").disabled = true; prog.hidden = false; prog.value = 0;
+  prog.hidden = false; prog.value = 0;
   setMsg($("enc-msg"), "Encrypting…");
 
-  const total = encFiles.reduce((a, f) => a + f.file.size, 0) || 1;
+  const total = items.reduce((a, f) => a + f.file.size, 0) || 1;
   // When hiding names the data is processed twice (inner zip, then encrypted outer zip).
   const passes = hide ? 2 : 1;
   let done = 0;
-  const tick = (pass) => (p) => { prog.value = Math.min(1, ((pass * total) + done + p) / (total * passes)); };
+  const tick = (pass) => (p) => setProg(Math.min(1, ((pass * total) + done + p) / (total * passes)));
 
   try {
     let blob;
-    const entryOpts = (f) => ({ lastModDate: new Date(f.file.lastModified || Date.now()) });
+    const entryOpts = (f) => ({ lastModDate: new Date(f.file.lastModified || Date.now()), signal });
 
     if (hide) {
       // Pass 1: plain inner ZIP holding the real file names.
       const inner = new zip.ZipWriter(new zip.BlobWriter("application/zip"), { level });
-      for (const f of encFiles) {
+      for (const f of items) {
         await inner.add(f.path, new zip.BlobReader(f.file), { ...entryOpts(f), onprogress: tick(0) });
         done += f.file.size;
       }
@@ -208,18 +233,19 @@ $("enc-go").addEventListener("click", async () => {
         { password: pw, encryptionStrength: 3, zipCrypto: false, level: 0 });
       const scale = total / (innerBlob.size || 1);
       await outer.add(INNER_NAME, new zip.BlobReader(innerBlob),
-        { onprogress: (p) => { prog.value = Math.min(1, (total + p * scale) / (total * 2)); } });
+        { signal, onprogress: (p) => setProg(Math.min(1, (total + p * scale) / (total * 2))) });
       blob = await outer.close();
     } else {
       const w = new zip.ZipWriter(new zip.BlobWriter("application/zip"),
         { password: pw, encryptionStrength: 3, zipCrypto: false, level });
-      for (const f of encFiles) {
+      for (const f of items) {
         await w.add(f.path, new zip.BlobReader(f.file), { ...entryOpts(f), onprogress: tick(0) });
         done += f.file.size;
       }
       blob = await w.close();
     }
 
+    if (gen !== encGen) return;   // "Clear everything" was pressed while encrypting
     prog.value = 1;
     setMsg($("enc-msg"), `Done: ${name} (${fmtSize(blob.size)}). AES-256. Keep the password safe, because there's no way to recover it.`, "ok");
     const actions = document.createElement("div"); actions.className = "actions";
@@ -227,11 +253,11 @@ $("enc-go").addEventListener("click", async () => {
     out.append(actions); out.hidden = false;
     $("enc-pw").value = ""; $("enc-pw2").value = ""; validateEnc();
   } catch (e) {
+    if (gen !== encGen) return;   // cancelled
     console.error(e);
     setMsg($("enc-msg"), "Encryption failed: " + (e.message || e), "err");
   } finally {
-    prog.hidden = true;
-    $("enc-go").disabled = !(encFiles.length && $("enc-pw").value && $("enc-pw").value === $("enc-pw2").value);
+    if (gen === encGen) { encAbort = null; prog.hidden = true; setEncBusy(false); }
   }
 });
 
@@ -240,18 +266,19 @@ $("enc-go").addEventListener("click", async () => {
 let decFile = null;
 
 function setDecFile(f) {
+  cancelDec();   // choosing another ZIP stops any decryption still running
   decFile = f || null;
   $("dec-chosen").textContent = decFile ? `${decFile.name} · ${fmtSize(decFile.size)}` : "";
   $("dec-out").hidden = true; $("dec-out").textContent = "";
   setMsg($("dec-msg"), "");
   validateDec();
 }
-function validateDec() { $("dec-go").disabled = !decFile; }
+function validateDec() { $("dec-go").disabled = !decFile || decAbort !== null; }
 
 $("dec-file").addEventListener("change", (e) => { setDecFile(e.target.files[0]); e.target.value = ""; });
 $("dec-pw").addEventListener("keydown", (e) => { if (e.key === "Enter" && !$("dec-go").disabled) $("dec-go").click(); });
 
-async function extractAll(reader, password, onprog) {
+async function extractAll(reader, password, onprog, signal) {
   const entries = (await reader.getEntries()).filter((e) => !e.directory);
   const total = entries.reduce((a, e) => a + (e.uncompressedSize || 0), 0) || 1;
   let done = 0;
@@ -259,6 +286,7 @@ async function extractAll(reader, password, onprog) {
   for (const entry of entries) {
     const blob = await entry.getData(new zip.BlobWriter(mimeOf(entry.filename)), {
       password: entry.encrypted ? password : undefined,
+      signal,
       onprogress: (p) => onprog((done + p) / total),
     });
     done += entry.uncompressedSize || 0;
@@ -267,9 +295,15 @@ async function extractAll(reader, password, onprog) {
   return files;
 }
 
-// Bumped by every new decryption and by "Clear everything", so work still running
-// for an older result (e.g. building the "Download all" ZIP) knows to stop.
-let decGen = 0;
+// Bumped by every new decryption, by choosing another ZIP and by "Clear everything", so work
+// still running for an older result (decrypting, or building the "Download all" ZIP) knows to stop.
+let decGen = 0, decAbort = null;
+
+function cancelDec() {
+  decGen++;
+  decAbort?.abort(); decAbort = null;
+  $("dec-progress").hidden = true;
+}
 
 // Plain ZIP of the decrypted files. Repeated paths get " (2)", " (3)"… so ZipWriter accepts them.
 async function buildPlainZip(files) {
@@ -290,21 +324,24 @@ async function buildPlainZip(files) {
 
 $("dec-go").addEventListener("click", async () => {
   if (!decFile) return;
-  const gen = ++decGen;
+  cancelDec();
+  const gen = decGen, ctrl = new AbortController(), signal = ctrl.signal, file = decFile;
+  decAbort = ctrl;
   const pw = $("dec-pw").value;
   const prog = $("dec-progress"), out = $("dec-out");
+  const setProg = (v) => { if (gen === decGen) prog.value = v; };
   out.hidden = true; out.textContent = "";
   $("dec-go").disabled = true; prog.hidden = false; prog.value = 0;
   setMsg($("dec-msg"), "Decrypting…");
 
   let reader;
   try {
-    reader = new zip.ZipReader(new zip.BlobReader(decFile));
+    reader = new zip.ZipReader(new zip.BlobReader(file));
     const entries = await reader.getEntries();
     const anyEncrypted = entries.some((e) => e.encrypted);
     if (anyEncrypted && !pw) throw Object.assign(new Error("This ZIP is encrypted. Enter the password."), { user: true });
 
-    let files = await extractAll(reader, pw, (p) => { prog.value = p * 0.5; });
+    let files = await extractAll(reader, pw, (p) => setProg(p * 0.5), signal);
     let notes = [];
     if (!anyEncrypted) notes.push("This ZIP wasn't encrypted.");
     if (files.some((f) => f.zipCrypto)) notes.push("This ZIP uses the old ZipCrypto encryption, which is weak.");
@@ -315,12 +352,12 @@ $("dec-go").addEventListener("click", async () => {
       innerBlob = files[0].blob;
       try {
         const inner = new zip.ZipReader(new zip.BlobReader(innerBlob));
-        files = await extractAll(inner, pw, (p) => { prog.value = 0.5 + p * 0.5; });
+        files = await extractAll(inner, pw, (p) => setProg(0.5 + p * 0.5), signal);
         await inner.close();
       } catch { innerBlob = null; /* not a zip after all — show as-is */ }
     }
     prog.value = 1;
-    if (gen !== decGen) return;   // "Clear everything" was pressed while decrypting
+    if (gen !== decGen) return;   // cancelled: "Clear everything" or another ZIP chosen
 
     const totalSize = files.reduce((a, f) => a + f.blob.size, 0);
     setMsg($("dec-msg"), [`Decrypted ${files.length} file${files.length !== 1 ? "s" : ""} (${fmtSize(totalSize)}).`, ...notes].join(" "),
@@ -329,7 +366,7 @@ $("dec-go").addEventListener("click", async () => {
     // "Download all" saves one regular (unencrypted) ZIP: a single download works on every
     // browser including iPhone Safari, keeps folder structure, and iOS Files / macOS open it natively.
     if (files.length > 1) {
-      const allName = decFile.name.replace(/\.zip$/i, "") + "-decrypted.zip";
+      const allName = file.name.replace(/\.zip$/i, "") + "-decrypted.zip";
       const actions = document.createElement("div"); actions.className = "actions";
       // Only reuse the inner archive if none of its entries were encrypted; otherwise rebuild.
       let ready = innerBlob && !files.some((f) => f.encrypted) ? innerBlob : null;
@@ -363,6 +400,7 @@ $("dec-go").addEventListener("click", async () => {
     out.hidden = false;
     $("dec-pw").value = "";
   } catch (e) {
+    if (gen !== decGen) return;   // cancelled
     console.error(e);
     const m = e.user ? e.message
       : e.message === zip.ERR_INVALID_PASSWORD ? "Wrong password."
@@ -371,7 +409,7 @@ $("dec-go").addEventListener("click", async () => {
     setMsg($("dec-msg"), m, "err");
   } finally {
     try { await reader?.close(); } catch {}
-    prog.hidden = true; validateDec();
+    if (gen === decGen) { decAbort = null; prog.hidden = true; validateDec(); }
   }
 });
 
@@ -380,7 +418,8 @@ $("dec-go").addEventListener("click", async () => {
 // Drops every reference to selected files, results and passwords so the browser can free them.
 // (JavaScript can't zero memory directly; the garbage collector reclaims it.)
 function wipeAll() {
-  encFiles = []; decFile = null; decGen++;
+  cancelEnc(); cancelDec();
+  encFiles = []; decFile = null;
   for (const url of [...liveUrls]) revokeUrl(url);
   for (const id of ["enc-pw", "enc-pw2", "dec-pw", "enc-name"]) { $(id).value = ""; $(id).type = id === "enc-name" ? "text" : "password"; }
   document.querySelectorAll(".eye").forEach((b) => (b.textContent = "Show"));

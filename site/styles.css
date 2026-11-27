@@ -25,6 +25,7 @@ section { background: var(--card); border: 1px solid var(--line); border-radius:
 .btn.secondary, .out button.secondary { background: var(--line); color: var(--fg); }
 button.primary { width: 100%; margin-top: 16px; padding: 14px; font-size: 17px; }
 button:disabled { opacity: .45; cursor: not-allowed; }
+.btn:has(input:disabled) { opacity: .45; cursor: not-allowed; }
 .field { display: block; margin-top: 14px; font-size: 14px; font-weight: 600; }
 .field input { display: block; width: 100%; margin-top: 6px; padding: 11px 12px; font: inherit; font-weight: 400;
   font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; }
