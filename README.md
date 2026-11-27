@@ -60,10 +60,11 @@ After changing any file in `site/`, bump `VERSION` in `site/sw.js`, then rebuild
 
 ## Files
 ```
-Dockerfile        nginx:alpine image, serves site/ on port 80
-nginx.conf        static hosting + security headers
-site/index.html   UI
-site/app.js       encrypt/decrypt logic
-site/sw.js        offline cache
-site/vendor/      zip.js 2.25.0 (BSD-3-Clause)
+Dockerfile              nginx:alpine image, serves site/ on port 80
+nginx.conf              static hosting, per-location CSP
+security-headers.conf   shared security headers
+site/index.html         UI
+site/app.js             encrypt/decrypt logic
+site/sw.js              offline cache
+site/vendor/            zip.js 2.25.0 (BSD-3-Clause)
 ```
