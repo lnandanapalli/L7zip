@@ -1,0 +1,60 @@
+:root {
+  --bg: #f6f7f9; --card: #fff; --fg: #0f172a; --muted: #64748b; --line: #e2e8f0;
+  --accent: #2563eb; --accent-fg: #fff; --ok: #15803d; --err: #b91c1c; --warn: #b45309;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0b1120; --card: #111827; --fg: #e5e7eb; --muted: #94a3b8; --line: #1f2937;
+    --accent: #3b82f6; --ok: #4ade80; --err: #f87171; --warn: #fbbf24; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--fg);
+  font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 640px; margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 20px) 16px calc(env(safe-area-inset-bottom) + 24px); }
+header h1 { margin: 0; font-size: 28px; letter-spacing: -0.02em; }
+.sub { margin: 4px 0 18px; color: var(--muted); font-size: 14px; }
+.tabs { display: flex; gap: 4px; background: var(--line); padding: 4px; border-radius: 12px; margin-bottom: 16px; }
+.tabs button { flex: 1; border: 0; background: transparent; color: var(--fg); padding: 10px; border-radius: 9px;
+  font: inherit; font-weight: 600; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+.pickers { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn, button.primary, .out button { display: inline-block; border: 0; border-radius: 10px; padding: 11px 16px;
+  font: inherit; font-weight: 600; cursor: pointer; background: var(--accent); color: var(--accent-fg); }
+.btn.secondary, .out button.secondary { background: var(--line); color: var(--fg); }
+button.primary { width: 100%; margin-top: 16px; padding: 14px; font-size: 17px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.field { display: block; margin-top: 14px; font-size: 14px; font-weight: 600; }
+.field input { display: block; width: 100%; margin-top: 6px; padding: 11px 12px; font: inherit; font-weight: 400;
+  font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; }
+.pw { position: relative; }
+.pw input { padding-right: 64px; }
+.eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); margin-top: 3px; border: 0;
+  background: transparent; color: var(--accent); font: inherit; font-size: 14px; font-weight: 600; padding: 6px; cursor: pointer; }
+.strength { height: 4px; background: var(--line); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+.strength span { display: block; height: 100%; width: 0; transition: width .2s; }
+.check { display: block; margin-top: 14px; font-size: 15px; font-weight: 600; }
+.check input { margin-right: 6px; transform: scale(1.15); }
+.check small { display: block; margin: 2px 0 0 26px; font-weight: 400; color: var(--muted); font-size: 13px; }
+.filelist { list-style: none; padding: 0; margin: 12px 0 0; max-height: 240px; overflow: auto; }
+.filelist li { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.filelist li:last-child { border-bottom: 0; }
+.filelist .name { flex: 1; overflow-wrap: anywhere; }
+.filelist .size { color: var(--muted); white-space: nowrap; }
+.filelist button { border: 0; background: transparent; color: var(--muted); font-size: 18px; cursor: pointer; padding: 2px 6px; }
+.out .row button { padding: 7px 12px; font-size: 14px; }
+.muted { color: var(--muted); font-size: 14px; margin: 8px 0 0; }
+.msg { margin: 10px 0 0; font-size: 14px; min-height: 1em; }
+.msg.err { color: var(--err); } .msg.ok { color: var(--ok); } .msg.warn { color: var(--warn); }
+progress { width: 100%; margin-top: 12px; height: 8px; }
+.out { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.out .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.out .row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.out .row:last-child { border-bottom: 0; }
+.out .row .name { flex: 1; overflow-wrap: anywhere; }
+.out .row .size { color: var(--muted); white-space: nowrap; }
+.wipe { display: block; width: 100%; margin-top: 12px; padding: 11px; border-radius: 10px; font: inherit;
+  font-weight: 600; cursor: pointer; background: transparent; color: var(--err); border: 1px solid var(--line); }
+footer { margin-top: 18px; font-size: 13px; color: var(--muted); }
+code { font-size: 12px; background: var(--line); padding: 1px 4px; border-radius: 4px; }

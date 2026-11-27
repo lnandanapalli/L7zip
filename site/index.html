@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>L7zip</title>
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="L7zip">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>L7zip</h1>
+    <p class="sub">AES-256 encrypted ZIP · everything happens on this device</p>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-enc" aria-selected="true" aria-controls="panel-enc">Encrypt</button>
+    <button role="tab" id="tab-dec" aria-selected="false" aria-controls="panel-dec">Decrypt</button>
+  </nav>
+
+  <!-- ENCRYPT -->
+  <section id="panel-enc" role="tabpanel" aria-labelledby="tab-enc">
+    <div class="pickers">
+      <label class="btn">Add files<input id="enc-files" type="file" multiple hidden></label>
+      <label class="btn secondary" id="enc-folder-label">Add folder<input id="enc-folder" type="file" webkitdirectory hidden></label>
+    </div>
+    <ul id="enc-list" class="filelist"></ul>
+    <p id="enc-summary" class="muted"></p>
+
+    <label class="field">Password
+      <div class="pw"><input id="enc-pw" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false"><button type="button" class="eye" data-for="enc-pw" aria-label="Show password">Show</button></div>
+    </label>
+    <div id="enc-strength" class="strength"><span></span></div>
+    <label class="field">Confirm password
+      <input id="enc-pw2" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false">
+    </label>
+
+    <label class="field">Output file name
+      <input id="enc-name" type="text" autocapitalize="off" spellcheck="false">
+    </label>
+
+    <label class="check"><input id="enc-hide" type="checkbox" checked> Hide file names
+      <small>Standard encrypted ZIPs leave file names visible. When this is on, your files go into an inner ZIP inside the encrypted one, so the names are hidden too. In 7-Zip you'll see one <code>archive.zip</code> to open after entering the password.</small></label>
+    <label class="check"><input id="enc-compress" type="checkbox" checked> Compress
+      <small>Turn this off for photos, videos and other files that are already compressed, so encryption runs faster.</small></label>
+
+    <button id="enc-go" class="primary" disabled>Encrypt</button>
+    <progress id="enc-progress" max="1" value="0" hidden></progress>
+    <p id="enc-msg" class="msg" role="status"></p>
+    <div id="enc-out" class="out" hidden></div>
+  </section>
+
+  <!-- DECRYPT -->
+  <section id="panel-dec" role="tabpanel" aria-labelledby="tab-dec" hidden>
+    <div class="pickers">
+      <label class="btn">Choose ZIP<input id="dec-file" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden></label>
+    </div>
+    <p id="dec-chosen" class="muted"></p>
+
+    <label class="field">Password
+      <div class="pw"><input id="dec-pw" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false"><button type="button" class="eye" data-for="dec-pw" aria-label="Show password">Show</button></div>
+    </label>
+
+    <button id="dec-go" class="primary" disabled>Decrypt</button>
+    <progress id="dec-progress" max="1" value="0" hidden></progress>
+    <p id="dec-msg" class="msg" role="status"></p>
+    <div id="dec-out" class="out" hidden></div>
+  </section>
+
+  <button id="wipe" type="button" class="wipe">Clear everything</button>
+
+  <footer>
+    <p>The files use the standard WinZip AES-256 format, so 7-Zip, WinZip, Keka, The Unarchiver and other tools can open them without this site. Your files and password never leave this device.</p>
+    <p class="muted" id="offline-state"></p>
+  </footer>
+</main>
+<script src="vendor/zip.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
