@@ -3,7 +3,7 @@
 A client-side web app that encrypts and decrypts **AES-256 ZIP** files (the standard WinZip AE-2 format). It runs entirely in the browser and can be added to the iPhone home screen. The server only hosts static files; it never receives your files or your password.
 
 Files made with L7zip open without this site in:
-- **Mac:** Keka, BetterZip, The Unarchiver, or `7zz x file.zip` (`brew install sevenzip`)
+- **Mac:** built in: double-click the file and enter the password (Archive Utility, macOS 11 Big Sur or later). Keka, BetterZip, The Unarchiver and `7zz x file.zip` also work.
 - **Windows:** 7-Zip, WinZip, WinRAR
 - **iPhone/iPad:** this site, or apps like Zip Opener or iZip
 - **Linux:** `7z x file.zip`
