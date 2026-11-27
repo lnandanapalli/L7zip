@@ -267,8 +267,30 @@ async function extractAll(reader, password, onprog) {
   return files;
 }
 
+// Bumped by every new decryption and by "Clear everything", so work still running
+// for an older result (e.g. building the "Download all" ZIP) knows to stop.
+let decGen = 0;
+
+// Plain ZIP of the decrypted files. Repeated paths get " (2)", " (3)"… so ZipWriter accepts them.
+async function buildPlainZip(files) {
+  const w = new zip.ZipWriter(new zip.BlobWriter("application/zip"), { level: 0 });
+  const used = new Set();
+  for (const f of files) {
+    let path = f.path;
+    if (used.has(path)) {
+      const slash = path.lastIndexOf("/") + 1, dot = path.lastIndexOf(".");
+      const cut = dot > slash ? dot : path.length;
+      for (let i = 2; used.has(path); i++) path = f.path.slice(0, cut) + ` (${i})` + f.path.slice(cut);
+    }
+    used.add(path);
+    await w.add(path, new zip.BlobReader(f.blob));
+  }
+  return w.close();
+}
+
 $("dec-go").addEventListener("click", async () => {
   if (!decFile) return;
+  const gen = ++decGen;
   const pw = $("dec-pw").value;
   const prog = $("dec-progress"), out = $("dec-out");
   out.hidden = true; out.textContent = "";
@@ -288,7 +310,7 @@ $("dec-go").addEventListener("click", async () => {
     if (files.some((f) => f.zipCrypto)) notes.push("This ZIP uses the old ZipCrypto encryption, which is weak.");
 
     // Unwrap the hidden-names inner archive.
-    let innerBlob = null;   // plain ZIP of all files (reused for "Download all")
+    let innerBlob = null;   // the inner archive, reused for "Download all" when it is a plain ZIP
     if (files.length === 1 && files[0].path === INNER_NAME) {
       innerBlob = files[0].blob;
       try {
@@ -298,6 +320,7 @@ $("dec-go").addEventListener("click", async () => {
       } catch { innerBlob = null; /* not a zip after all — show as-is */ }
     }
     prog.value = 1;
+    if (gen !== decGen) return;   // "Clear everything" was pressed while decrypting
 
     const totalSize = files.reduce((a, f) => a + f.blob.size, 0);
     setMsg($("dec-msg"), [`Decrypted ${files.length} file${files.length !== 1 ? "s" : ""} (${fmtSize(totalSize)}).`, ...notes].join(" "),
@@ -308,15 +331,24 @@ $("dec-go").addEventListener("click", async () => {
     if (files.length > 1) {
       const allName = decFile.name.replace(/\.zip$/i, "") + "-decrypted.zip";
       const actions = document.createElement("div"); actions.className = "actions";
+      // Only reuse the inner archive if none of its entries were encrypted; otherwise rebuild.
+      let ready = innerBlob && !files.some((f) => f.encrypted) ? innerBlob : null;
+      innerBlob = null;
       const btn = button("Download all (.zip)", async () => {
-        if (!innerBlob) {
-          btn.disabled = true;
-          const w = new zip.ZipWriter(new zip.BlobWriter("application/zip"), { level: 0 });
-          for (const f of files) await w.add(f.path, new zip.BlobReader(f.blob));
-          innerBlob = await w.close();
+        btn.disabled = true;
+        try {
+          // Built on demand and not kept afterwards, so a second full copy of the files
+          // doesn't stay in memory.
+          const blob = ready || await buildPlainZip(files);
+          ready = null;
+          if (gen !== decGen) return;   // cleared or replaced while building
+          download(blob, allName);
+        } catch (e) {
+          console.error(e);
+          if (gen === decGen) setMsg($("dec-msg"), "Couldn't build the combined ZIP. Download the files one by one instead.", "err");
+        } finally {
           btn.disabled = false;
         }
-        download(innerBlob, allName);
       });
       actions.append(btn); out.append(actions);
     }
@@ -348,7 +380,7 @@ $("dec-go").addEventListener("click", async () => {
 // Drops every reference to selected files, results and passwords so the browser can free them.
 // (JavaScript can't zero memory directly; the garbage collector reclaims it.)
 function wipeAll() {
-  encFiles = []; decFile = null;
+  encFiles = []; decFile = null; decGen++;
   for (const url of [...liveUrls]) revokeUrl(url);
   for (const id of ["enc-pw", "enc-pw2", "dec-pw", "enc-name"]) { $(id).value = ""; $(id).type = id === "enc-name" ? "text" : "password"; }
   document.querySelectorAll(".eye").forEach((b) => (b.textContent = "Show"));

@@ -50,6 +50,17 @@ After the first visit, the app works offline.
 ## Updating
 Rebuild and redeploy. Nothing needs bumping: when a device is online, the app always loads the latest files from the server, and it only uses its saved offline copy when the server can't be reached.
 
+## Tests
+GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and push to `main`. It builds the image, checks the nginx config, checks status codes, content types and security headers (`tests/check-server.sh`), runs browser tests of encrypt/decrypt in Chromium (`tests/e2e.cjs`), and confirms 7-Zip opens the ZIPs the app makes and that the app opens ZIPs 7-Zip makes.
+
+Run them locally against a running container:
+```
+docker build -t l7zip . && docker run -d --rm -p 8080:80 l7zip
+bash tests/check-server.sh
+npm install --no-save --no-package-lock playwright && npx playwright install chromium
+node tests/e2e.cjs
+```
+
 ## Security notes
 - The crypto is AES-256 (WinZip AE-2) with HMAC-SHA1 authentication, using the browser's Web Crypto API through zip.js (bundled in `site/vendor/`, no CDN).
 - **Use ASCII-only passwords** (A–Z, a–z, 0–9, standard symbols). 7-Zip can read ZIPs with accented or emoji passwords but refuses to create them, and some other tools encode such passwords differently. The app warns you if you type one.
@@ -67,4 +78,5 @@ site/index.html         UI
 site/app.js             encrypt/decrypt logic
 site/sw.js              offline cache
 site/vendor/            zip.js 2.25.0 (BSD-3-Clause)
+tests/                  server checks and browser end-to-end tests (CI)
 ```
