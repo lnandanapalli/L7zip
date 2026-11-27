@@ -30,12 +30,17 @@ const baseName = (p) => p.split("/").pop();
 
 function setMsg(el, text, kind = "") { el.textContent = text; el.className = "msg" + (kind ? " " + kind : ""); }
 
+// Object URLs stay valid for 10 minutes (iOS may show a "Download?" prompt first),
+// and are all revoked by "Clear everything" / closing the page.
+const liveUrls = new Set();
+function revokeUrl(url) { if (liveUrls.delete(url)) URL.revokeObjectURL(url); }
 function download(blob, name) {
   const url = URL.createObjectURL(blob);
+  liveUrls.add(url);
   const a = document.createElement("a");
   a.href = url; a.download = name; a.rel = "noopener";
   document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  setTimeout(() => revokeUrl(url), 10 * 60_000);
 }
 
 // iPhone/iPad (including iPadOS, which reports itself as a Mac with touch). Used to hide the folder picker.
@@ -283,7 +288,7 @@ $("dec-go").addEventListener("click", async () => {
     if (files.some((f) => f.zipCrypto)) notes.push("This ZIP uses the old ZipCrypto encryption, which is weak.");
 
     // Unwrap the hidden-names inner archive.
-    let innerBlob = null;
+    let innerBlob = null;   // plain ZIP of all files (reused for "Download all")
     if (files.length === 1 && files[0].path === INNER_NAME) {
       innerBlob = files[0].blob;
       try {
@@ -296,16 +301,25 @@ $("dec-go").addEventListener("click", async () => {
 
     const totalSize = files.reduce((a, f) => a + f.blob.size, 0);
     setMsg($("dec-msg"), [`Decrypted ${files.length} file${files.length !== 1 ? "s" : ""} (${fmtSize(totalSize)}).`, ...notes].join(" "),
-      notes.length && files.some((f) => f.zipCrypto) ? "warn" : "ok");
+      notes.length ? "warn" : "ok");
 
-    const actions = document.createElement("div"); actions.className = "actions";
+    // "Download all" saves one regular (unencrypted) ZIP: a single download works on every
+    // browser including iPhone Safari, keeps folder structure, and iOS Files / macOS open it natively.
     if (files.length > 1) {
-      actions.append(button("Download all", async () => {
-        for (const f of files) { download(f.blob, baseName(f.path)); await new Promise((r) => setTimeout(r, 400)); }
-      }));
+      const allName = decFile.name.replace(/\.zip$/i, "") + "-decrypted.zip";
+      const actions = document.createElement("div"); actions.className = "actions";
+      const btn = button("Download all (.zip)", async () => {
+        if (!innerBlob) {
+          btn.disabled = true;
+          const w = new zip.ZipWriter(new zip.BlobWriter("application/zip"), { level: 0 });
+          for (const f of files) await w.add(f.path, new zip.BlobReader(f.blob));
+          innerBlob = await w.close();
+          btn.disabled = false;
+        }
+        download(innerBlob, allName);
+      });
+      actions.append(btn); out.append(actions);
     }
-    if (innerBlob) actions.append(button("Save inner archive.zip", () => download(innerBlob, INNER_NAME), true));
-    if (actions.childElementCount) out.append(actions);
 
     for (const f of files) {
       const row = document.createElement("div"); row.className = "row";
@@ -335,6 +349,7 @@ $("dec-go").addEventListener("click", async () => {
 // (JavaScript can't zero memory directly; the garbage collector reclaims it.)
 function wipeAll() {
   encFiles = []; decFile = null;
+  for (const url of [...liveUrls]) revokeUrl(url);
   for (const id of ["enc-pw", "enc-pw2", "dec-pw", "enc-name"]) { $(id).value = ""; $(id).type = id === "enc-name" ? "text" : "password"; }
   document.querySelectorAll(".eye").forEach((b) => (b.textContent = "Show"));
   for (const id of ["enc-out", "dec-out"]) { $(id).textContent = ""; $(id).hidden = true; }
