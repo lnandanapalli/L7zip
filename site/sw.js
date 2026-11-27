@@ -1,5 +1,5 @@
 /* Offline cache for the app shell. Bump VERSION whenever you change any file. */
-const VERSION = "l7zip-v1";
+const VERSION = "l7zip-v2";
 const ASSETS = [
   "./", "index.html", "styles.css", "app.js", "vendor/zip.min.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png",

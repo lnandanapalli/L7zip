@@ -30,10 +30,6 @@ const baseName = (p) => p.split("/").pop();
 
 function setMsg(el, text, kind = "") { el.textContent = text; el.className = "msg" + (kind ? " " + kind : ""); }
 
-function canShareFiles(files) {
-  try { return !!(navigator.canShare && navigator.canShare({ files })); } catch { return false; }
-}
-
 function download(blob, name) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -42,10 +38,9 @@ function download(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-async function share(files) {
-  try { await navigator.share({ files }); }
-  catch (e) { if (e && e.name !== "AbortError") alert("Sharing failed: " + e.message); }
-}
+// iPhone/iPad (including iPadOS, which reports itself as a Mac with touch). Used to hide the folder picker.
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
 function button(label, onClick, secondary = false) {
   const b = document.createElement("button");
@@ -54,13 +49,9 @@ function button(label, onClick, secondary = false) {
   return b;
 }
 
-/* Save controls: Share (iOS share sheet → Save to Files) + Download. */
+/* Save control: a single Download button. */
 function saveButtons(blob, name) {
-  const file = new File([blob], name, { type: blob.type || mimeOf(name) });
-  const out = [];
-  if (canShareFiles([file])) out.push(button("Share / Save to Files", () => share([file])));
-  out.push(button("Download", () => download(blob, name), out.length > 0));
-  return out;
+  return [button("Download", () => download(blob, name))];
 }
 
 /* ------------------------------------------------------------ tabs + misc UI */
@@ -84,8 +75,7 @@ document.querySelectorAll(".eye").forEach((b) => b.addEventListener("click", () 
 
 // Folder picking isn't supported on iPhone/iPad; hide the button there.
 const testInput = document.createElement("input");
-if (!("webkitdirectory" in testInput) || /iPhone|iPad|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) {
+if (!("webkitdirectory" in testInput) || IS_IOS) {
   $("enc-folder-label").hidden = true;
 }
 
@@ -309,12 +299,10 @@ $("dec-go").addEventListener("click", async () => {
       notes.length && files.some((f) => f.zipCrypto) ? "warn" : "ok");
 
     const actions = document.createElement("div"); actions.className = "actions";
-    const all = files.map((f) => new File([f.blob], baseName(f.path), { type: f.blob.type }));
     if (files.length > 1) {
-      if (canShareFiles(all)) actions.append(button("Share all", () => share(all)));
       actions.append(button("Download all", async () => {
         for (const f of files) { download(f.blob, baseName(f.path)); await new Promise((r) => setTimeout(r, 400)); }
-      }, actions.childElementCount > 0));
+      }));
     }
     if (innerBlob) actions.append(button("Save inner archive.zip", () => download(innerBlob, INNER_NAME), true));
     if (actions.childElementCount) out.append(actions);
