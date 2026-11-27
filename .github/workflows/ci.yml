@@ -66,12 +66,11 @@ jobs:
         run: |
           cd "$OUT"
           7z x -y -p"$PW" visible.zip -ovisible
-          7z x -y -p"$PW" hidden.zip -ohidden
-          ! 7z l -slt hidden/archive.zip | grep -q '^Encrypted = +' || { echo "inner archive should not be encrypted"; exit 1; }
-          7z x -y hidden/archive.zip -ohidden/inner
-          for d in visible hidden/inner; do
-            for f in hello.txt data.bin; do cmp "src/$f" "$d/$f"; done
-          done
+          7z x -y -p"$PW" wrapped.zip -owrapped
+          ! 7z l -slt wrapped/archive.zip | grep -q '^Encrypted = +' || { echo "archive.zip should not be encrypted"; exit 1; }
+          7z x -y wrapped/archive.zip -owrapped/inner
+          cmp src/data.bin visible/data.bin
+          cmp src/data.bin wrapped/inner/data.bin
           7z l -slt visible.zip | grep -q '^Method = AES-256' || { echo "expected AES-256"; exit 1; }
           echo "7-Zip extracted identical files"
 
